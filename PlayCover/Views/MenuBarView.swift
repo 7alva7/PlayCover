@@ -32,17 +32,25 @@ struct PlayCoverHelpMenuView: Commands {
 
         CommandGroup(replacing: .help) {
             Button("menubar.documentation") {
-                NSWorkspace.shared.open(URL(string: "https://docs.playcover.io")!)
+                if let url = URL(string: "https://docs.playcover.io") {
+                    NSWorkspace.shared.open(url)
+                }
             }
             Divider()
             Button("menubar.website") {
-                NSWorkspace.shared.open(URL(string: "https://playcover.io")!)
+                if let url = URL(string: "https://playcover.io") {
+                    NSWorkspace.shared.open(url)
+                }
             }
             Button("menubar.github") {
-                NSWorkspace.shared.open(URL(string: "https://github.com/PlayCover/PlayCover/")!)
+                if let url = URL(string: "https://github.com/PlayCover/PlayCover/") {
+                    NSWorkspace.shared.open(url)
+                }
             }
             Button("menubar.discord") {
-                NSWorkspace.shared.open(URL(string: "https://discord.gg/PlayCover")!)
+                if let url = URL(string: "https://discord.gg/RNCHsQHr3S") {
+                    NSWorkspace.shared.open(url)
+                }
             }
             #if DEBUG
             Divider()
@@ -60,16 +68,16 @@ struct PlayCoverViewMenuView: Commands {
         CommandGroup(replacing: .importExport) {
             Button("menubar.exportToSideloady") {
                 Task {
-                    if InstallVM.shared.installing {
+                    if InstallVM.shared.inProgress {
                         Log.shared.error(PlayCoverError.waitInstallation)
-                    } else if DownloadVM.shared.downloading {
+                    } else if DownloadVM.shared.inProgress {
                         Log.shared.error(PlayCoverError.waitDownload)
                     } else {
+                        // remove await for Swift 6 (no async operation occurs)
                         await NSOpenPanel.selectIPA { result in
                             if case .success(let url) = result {
-                                uif.ipaUrl = url
                                 Task {
-                                    Installer.install(ipaUrl: uif.ipaUrl!,
+                                    Installer.install(ipaUrl: url,
                                                             export: true,
                                                             returnCompletion: { ipa in
                                         Task { @MainActor in
@@ -79,11 +87,10 @@ struct PlayCoverViewMenuView: Commands {
                                                 config.promptsUserIfNeeded = true
                                                 let url = NSWorkspace.shared
                                                     .urlForApplication(withBundleIdentifier:
-                                                                        "com.sideloadly.sideloadly")
-                                                if url != nil {
-                                                    let unwrap = url.unsafelyUnwrapped
-                                                    try await NSWorkspace.shared
-                                                        .open([ipa], withApplicationAt: unwrap, configuration: config)
+                                                                        "io.sideloadly.sideloadly")
+                                                if let url = url {
+                                                    NSWorkspace.shared
+                                                        .open([ipa], withApplicationAt: url, configuration: config)
                                                 } else {
                                                     Log.shared.error("Could not find Sideloadly!")
                                                 }
@@ -102,7 +109,7 @@ struct PlayCoverViewMenuView: Commands {
         CommandGroup(before: .sidebar) {
             Button("menubar.clearCache") {
                 DataCache.instance.cleanAll()
-                URLCache.iconCache.removeAllCachedResponses()
+                Cacher.shared.removeImageCache()
 
                 if let cacheDir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first,
                    let bundleID = Bundle.main.bundleIdentifier {

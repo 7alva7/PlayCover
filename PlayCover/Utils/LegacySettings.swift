@@ -66,7 +66,6 @@ class LegacySettings {
 
             var settingsData = AppSettingsData()
             settingsData.keymapping = dictionary["pc.keymapping"] as? Bool ?? true
-            settingsData.mouseMapping = dictionary["pc.gamingMode"] as? Bool ?? true
             settingsData.sensitivity = dictionary["pc.sensivity"] as? Float ?? 50
             settingsData.disableTimeout = dictionary["pc.disableTimeout"] as? Bool ?? false
 
@@ -115,7 +114,8 @@ class LegacySettings {
                                                               downKeyCode: downKeyCode,
                                                               leftKeyCode: leftKeyCode,
                                                               keyName: "Keyboard",
-                                                              transform: transform))
+                                                              transform: transform,
+                                                              mode: .FIXED))
                 } else if data.count == 5 {
                     let size = data[3] as? CGFloat ?? 5
                     let xCoord = data[1] as? CGFloat ?? 0

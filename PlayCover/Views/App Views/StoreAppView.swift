@@ -12,11 +12,12 @@ import CachedAsyncImage
 struct StoreAppView: View {
     @Binding var selectedBackgroundColor: Color
     @Binding var selectedTextColor: Color
-    @Binding var selected: StoreAppData?
+    @Binding var selected: SourceAppsData?
 
-    @State var app: StoreAppData
+    @State var app: SourceAppsData
     @State var isList: Bool
     @State var observation: NSKeyValueObservation?
+    @State var showInfo = false
 
     @State var warningSymbol: String?
     @State var warningMessage: String?
@@ -34,17 +35,29 @@ struct StoreAppView: View {
                                 warningMessage: $warningMessage)
         .gesture(TapGesture(count: 2).onEnded {
             if let url = URL(string: app.link) {
-                if downloadVM.downloading {
+                if downloadVM.inProgress {
                     Log.shared.error(PlayCoverError.waitDownload)
                 } else {
-                    DownloadApp(url: url, app: app,
+                    let redirectHandler = RedirectHandler(url: url) // checking page redirect
+                    DownloadApp(url: redirectHandler.getFinal(), app: app,
                                 warning: warningMessage).start()
                 }
             }
         })
+        .contextMenu {
+            Button(action: {
+                showInfo.toggle()
+            }, label: {
+                Text("ipaLibrary.info")
+            })
+        }
         .simultaneousGesture(TapGesture().onEnded {
             selected = app
         })
+        .sheet(isPresented: $showInfo) {
+            StoreInfoAppView(viewModel: StoreAppVM(data: app))
+                .environmentObject(downloadVM)
+        }
         .environmentObject(downloadVM)
         .task(priority: .background) {
             if let sourceApp = AppsVM.shared.apps.first(where: { $0.info.bundleIdentifier == app.bundleID }) {
@@ -70,12 +83,13 @@ struct StoreAppView: View {
 struct StoreAppConditionalView: View {
     @Binding var selectedBackgroundColor: Color
     @Binding var selectedTextColor: Color
-    @Binding var selected: StoreAppData?
+    @Binding var selected: SourceAppsData?
 
-    @State var app: StoreAppData
-    @State var itunesResponce: ITunesResponse?
-    @State var onlineIcon: URL?
+    @State var app: SourceAppsData
+    @State var itunesResponse: ITunesResponse?
+    @State var onlineIcon: String?
     @State var localIcon: NSImage?
+    @State var loadingLocalIcon: Bool = true
     @State var isList: Bool
 
     @Binding var warningSymbol: String?
@@ -84,6 +98,12 @@ struct StoreAppConditionalView: View {
     @EnvironmentObject var downloadVM: DownloadVM
 
     @State private var cache = DataCache.instance
+
+    @Sendable private func waitForIconLoad() async {
+        loadingLocalIcon = true
+        try? await Task.sleep(nanoseconds: 6_000_000_000)
+        loadingLocalIcon = false
+    }
 
     var body: some View {
         Group {
@@ -94,27 +114,53 @@ struct StoreAppConditionalView: View {
                         .padding(.leading, 15)
                     ZStack {
                         Group {
-                            CachedAsyncImage(url: onlineIcon, urlCache: .iconCache) { image in
-                                image
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fit)
-                            } placeholder: {
-                                if let image = localIcon {
-                                    Image(nsImage: image)
+                            CachedAsyncImage(
+                                url: onlineIcon ?? "",
+                                placeholder: { _ in
+                                    if let image = localIcon {
+                                        Image(nsImage: image)
+                                            .resizable()
+                                            .aspectRatio(contentMode: .fit)
+                                    } else {
+                                        Rectangle()
+                                             .fill(.regularMaterial)
+                                             .overlay {
+                                                 if loadingLocalIcon {
+                                                     ProgressView()
+                                                         .progressViewStyle(.circular)
+                                                         .controlSize(.small)
+                                                 } else {
+                                                     Image(systemName: "exclamationmark.triangle")
+                                                         .opacity(0.5)
+                                                 }
+                                             }
+                                             .task(self.waitForIconLoad)
+                                    }
+                                },
+                                image: {
+                                    Image(nsImage: $0)
                                         .resizable()
                                         .aspectRatio(contentMode: .fit)
-                                } else {
-                                    ProgressView()
-                                        .progressViewStyle(.circular)
+                                },
+                                error: { _, retry in
+                                    Rectangle()
+                                        .fill(.regularMaterial)
+                                        .overlay {
+                                            Image(systemName: "exclamationmark.triangle")
+                                                .opacity(0.5)
+                                        }
+                                        .task {
+                                            retry()
+                                        }
                                 }
-                            }
+                            )
                         }
                         .frame(width: 30, height: 30)
                         .cornerRadius(7.5)
                         .shadow(radius: 1)
                         .padding(.horizontal, 15)
                         .padding(.vertical, 5)
-                        if downloadVM.downloading && downloadVM.storeAppData == app {
+                        if downloadVM.inProgress && downloadVM.storeAppData == app {
                             ProgressView(value: downloadVM.progress)
                                 .progressViewStyle(.circular)
                         }
@@ -133,28 +179,56 @@ struct StoreAppConditionalView: View {
                               selectedBackgroundColor : Color.clear)
                         .brightness(-0.2))
             } else {
-                VStack {
+                LazyVStack {
                     ZStack {
                         Group {
-                            CachedAsyncImage(url: onlineIcon, urlCache: .iconCache) { image in
-                                image
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fit)
-                            } placeholder: {
-                                if let image = localIcon {
-                                    Image(nsImage: image)
+                            CachedAsyncImage(
+                                url: onlineIcon ?? "",
+                                placeholder: { _ in
+                                    if let image = localIcon {
+                                        Image(nsImage: image)
+                                            .resizable()
+                                            .aspectRatio(contentMode: .fit)
+                                    } else {
+                                        Rectangle()
+                                             .fill(.regularMaterial)
+                                             .overlay {
+                                                 if loadingLocalIcon {
+                                                     ProgressView()
+                                                         .progressViewStyle(.circular)
+                                                         .controlSize(.small)
+                                                 } else {
+                                                     Image(systemName: "exclamationmark.triangle")
+                                                         .font(.system(size: 24))
+                                                         .opacity(0.5)
+                                                 }
+                                             }
+                                             .task(self.waitForIconLoad)
+                                    }
+                                },
+                                image: {
+                                    Image(nsImage: $0)
                                         .resizable()
                                         .aspectRatio(contentMode: .fit)
-                                } else {
-                                    ProgressView()
-                                        .progressViewStyle(.circular)
+                                },
+                                error: { _, retry in
+                                    Rectangle()
+                                        .fill(.regularMaterial)
+                                        .overlay {
+                                            Image(systemName: "exclamationmark.triangle")
+                                                .font(.system(size: 24))
+                                                .opacity(0.5)
+                                        }
+                                        .task {
+                                            retry()
+                                        }
                                 }
-                            }
+                            )
                         }
                         .frame(width: 60, height: 60)
                         .cornerRadius(15)
                         .shadow(radius: 1)
-                        if downloadVM.downloading && downloadVM.storeAppData == app {
+                        if downloadVM.inProgress && downloadVM.storeAppData == app {
                             VStack {
                                 Spacer()
                                 ProgressView(value: downloadVM.progress)
@@ -182,15 +256,15 @@ struct StoreAppConditionalView: View {
                 .frame(width: 130, height: 130)
             }
         }
-        .task(priority: .userInitiated) {
+        .task(priority: .background) {
             if !cache.hasData(forKey: app.itunesLookup) {
-                await Cacher().resolveITunesData(app.itunesLookup)
+                await Cacher.shared.resolveITunesData(app.itunesLookup)
             }
-            itunesResponce = try? cache.readCodable(forKey: app.itunesLookup)
-            if itunesResponce != nil {
-                onlineIcon = URL(string: itunesResponce!.results[0].artworkUrl512)
+            itunesResponse = try? cache.readCodable(forKey: app.itunesLookup)
+            if let response = itunesResponse {
+                onlineIcon = response.results[0].artworkUrl512
             } else {
-                localIcon = Cacher().getLocalIcon(bundleId: app.bundleID)
+                localIcon = Cacher.shared.getLocalIcon(bundleId: app.bundleID)
             }
         }
     }

@@ -25,7 +25,7 @@
     <br />
     <a href="https://playcover.github.io/PlayBook">Documentation</a>
     ·
-    <a href="https://discord.gg/rMv5qxGTGC">Discord</a>
+    <a href="https://discord.gg/RNCHsQHr3S">Discord</a>
     ·
     <a href="https://playcover.io/">Website</a>
   </p>
@@ -58,13 +58,7 @@ Follow the instructions below to get Genshin Impact, and many other games, up an
 
 ### Prerequisites
 
-At the moment, PlayCover can only run on Apple Silicon Macs. Devices with the following chips are supported:
-
-* M1
-* M1 Pro
-* M1 Max
-* M1 Ultra
-* M2
+At the moment, PlayCover can only run on Apple Silicon Macs. This means that only devices with M-series SoCs (eg. M1) are supported.
 
 If you have an Intel Mac, you can explore alternatives like Bootcamp or emulators.
 
@@ -77,10 +71,11 @@ You can download stable releases [here](https://github.com/PlayCover/PlayCover/r
 To learn how to setup and use PlayCover, visit the documentation [here](https://playcover.github.io/PlayBook).
 
 ### Homebrew Cask
-We host a [Homebrew](https://brew.sh) tap with the [PlayCover cask](https://github.com/PlayCover/homebrew-playcover/blob/master/Casks/playcover-community.rb). To install from it:
+We host a [Homebrew](https://brew.sh) tap with the [PlayCover cask](https://github.com/PlayCover/homebrew-playcover/blob/master/Casks/playcover-community.rb). To install from it run:
 
-1. Tap `PlayCover/playcover` with `brew tap PlayCover/playcover`;
-2. Install PlayCover with `brew install --cask playcover-community`.
+```sh
+brew install --cask PlayCover/playcover/playcover-community
+```
 
 To uninstall:
 1. Remove PlayCover using `brew uninstall --cask playcover-community`;
@@ -116,7 +111,7 @@ These open source libraries were used to create this project.
 * [PTFakeTouch](https://github.com/Ret70/PTFakeTouch)
 * [DownloadManager](https://github.com/shapedbyiris/download-manager)
 * [DataCache](https://github.com/huynguyencong/DataCache)
-* [SwiftUI CachedAsyncImage](https://github.com/lorenzofiamingo/swiftui-cached-async-image)
+* [SwiftUI CachedAsyncImage](https://github.com/bullinnyc/CachedAsyncImage)
 
 * Thanks to @iVoider for creating such a great project!
 

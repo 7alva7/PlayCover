@@ -14,29 +14,76 @@ struct MainView: View {
     @EnvironmentObject var store: StoreVM
     @EnvironmentObject var integrity: AppIntegrity
 
+    @ObservedObject var keyCoverObserved = KeyCoverObservable.shared
+
     @Binding public var isSigningSetupShown: Bool
 
     @State private var selectedView: Int? = -1
     @State private var navWidth: CGFloat = 0
     @State private var viewWidth: CGFloat = 0
     @State private var collapsed: Bool = false
+    @State private var showSourceFolders = true
     @State private var selectedBackgroundColor: Color = Color.accentColor
     @State private var selectedTextColor: Color = Color.black
+
+    @ObservedObject private var URLObserved = URLObservable.shared
+
     var body: some View {
         GeometryReader { viewGeom in
             NavigationView {
                 GeometryReader { sidebarGeom in
                     List {
-                        NavigationLink(destination: AppLibraryView(selectedBackgroundColor: $selectedBackgroundColor,
-                                                                   selectedTextColor: $selectedTextColor),
-                                       tag: 1, selection: self.$selectedView) {
+                        NavigationLink(tag: 1, selection: $selectedView) {
+                            AppLibraryView(selectedBackgroundColor: $selectedBackgroundColor,
+                                                                       selectedTextColor: $selectedTextColor)
+                        } label: {
                             Label("sidebar.appLibrary", systemImage: "square.grid.2x2")
                         }
-                        NavigationLink(destination: IPALibraryView(selectedBackgroundColor: $selectedBackgroundColor,
-                                                                   selectedTextColor: $selectedTextColor)
-                            .environmentObject(store),
-                                       tag: 2, selection: self.$selectedView) {
-                            Label("sidebar.ipaLibrary", systemImage: "arrow.down.circle")
+                        NavigationLink(tag: 2, selection: $selectedView) {
+                            IPALibraryView(storeVM: store,
+                                           selectedBackgroundColor: $selectedBackgroundColor,
+                                           selectedTextColor: $selectedTextColor)
+                            .environmentObject(store)
+                        } label: {
+                            HStack {
+                                Label("sidebar.ipaLibrary", systemImage: "arrow.down.circle")
+                                Button {
+                                    withAnimation {
+                                        showSourceFolders.toggle()
+                                    }
+                                } label: {
+                                    Image(systemName: showSourceFolders ? "chevron.up" : "chevron.down")
+                                        .font(.caption)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        if showSourceFolders {
+                            let enabledSources: [SourceJSON] = StoreVM.shared.getEnabledSources()
+                            ForEach(enabledSources, id: \.hashValue) { source in
+                                    NavigationLink(tag: source.hashValue, selection: $selectedView) {
+                                    IPASourceView(storeVM: store,
+                                                  selectedBackgroundColor: $selectedBackgroundColor,
+                                                  selectedTextColor: $selectedTextColor,
+                                                  sourceName: source.name,
+                                                  sourceApps: source.data)
+                                    .environmentObject(store)
+                                } label: {
+                                    Label(source.name, systemImage: "folder")
+                                        .font(.caption)
+                                        .padding(.leading)
+                                }
+                            }
+                        }
+                    }
+                    .frame(minWidth: 150)
+                    .toolbar {
+                        ToolbarItem { // Sits on the left by default
+                            Button {
+                                toggleSidebar()
+                            } label: {
+                                Image(systemName: "sidebar.leading")
+                            }
                         }
                     }
                     .onChange(of: sidebarGeom.size) { newSize in
@@ -81,14 +128,7 @@ struct MainView: View {
                 .background(SplitViewAccessor(sideCollapsed: $collapsed))
             }
             .onAppear {
-                self.selectedView = 1
-            }
-            .toolbar {
-                ToolbarItem(placement: .navigation) {
-                    Button(action: toggleSidebar, label: {
-                        Image(systemName: "sidebar.leading")
-                    })
-                }
+                self.selectedView = URLObserved.type == .source ? 2 : 1
             }
             .overlay {
                 HStack {
@@ -120,6 +160,12 @@ struct MainView: View {
             .sheet(isPresented: $isSigningSetupShown) {
                 SignSetupView(isSigningSetupShown: $isSigningSetupShown)
             }
+            .onChange(of: URLObserved.action) { _ in
+                self.selectedView = URLObserved.type == .source ? 2 : self.selectedView
+            }
+            .sheet(isPresented: $keyCoverObserved.isKeyCoverUnlockingPromptShown) {
+                KeyCoverUnlockingPrompt()
+            }
         }
         .frame(minWidth: 675, minHeight: 330)
     }
@@ -150,6 +196,7 @@ struct SplitViewAccessor: NSViewRepresentable {
             var sview = superview
 
             // Find split view through hierarchy
+            // swiftlint:disable:next force_unwrapping
             while sview != nil, !sview!.isKind(of: NSSplitView.self) {
                 sview = sview?.superview
             }

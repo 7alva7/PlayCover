@@ -34,6 +34,11 @@ struct ButtonModel: Codable {
     }
 }
 
+enum JoystickMode: Int, Codable {
+    case FIXED
+    case FLOATING
+}
+
 struct JoystickModel: Codable {
     var upKeyCode: Int
     var rightKeyCode: Int
@@ -41,19 +46,22 @@ struct JoystickModel: Codable {
     var leftKeyCode: Int
     var keyName: String
     var transform: KeyModelTransform
+    var mode: JoystickMode
 
     init(upKeyCode: Int,
          rightKeyCode: Int,
          downKeyCode: Int,
          leftKeyCode: Int,
          keyName: String,
-         transform: KeyModelTransform) {
+         transform: KeyModelTransform,
+         mode: JoystickMode) {
         self.upKeyCode = upKeyCode
         self.rightKeyCode = rightKeyCode
         self.downKeyCode = downKeyCode
         self.leftKeyCode = leftKeyCode
         self.keyName = keyName
         self.transform = transform
+        self.mode = mode
     }
 
     init(from decoder: Decoder) throws {
@@ -63,7 +71,8 @@ struct JoystickModel: Codable {
                   downKeyCode: try container.decode(Int.self, forKey: .downKeyCode),
                   leftKeyCode: try container.decode(Int.self, forKey: .leftKeyCode),
                   keyName: try container.decodeIfPresent(String.self, forKey: .keyName) ?? "Keyboard",
-                  transform: try container.decode(KeyModelTransform.self, forKey: .transform))
+                  transform: try container.decode(KeyModelTransform.self, forKey: .transform),
+                  mode: try container.decodeIfPresent(JoystickMode.self, forKey: .mode) ?? .FIXED)
     }
 }
 
@@ -109,7 +118,6 @@ class Keymapping {
 
     let info: AppInfo
     let keymapURL: URL
-    var container: AppContainer?
     var keymap: Keymap {
         get {
             do {
@@ -134,9 +142,8 @@ class Keymapping {
         }
     }
 
-    init(_ info: AppInfo, container: AppContainer?) {
+    init(_ info: AppInfo) {
         self.info = info
-        self.container = container
         keymapURL = Keymapping.keymappingDir.appendingPathComponent("\(info.bundleIdentifier).plist")
     }
 

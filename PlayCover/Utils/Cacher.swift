@@ -8,15 +8,29 @@
 import Foundation
 import AppKit
 import DataCache
+import CachedAsyncImage
 
 class Cacher {
-
+    static let shared = Cacher()
+    @ImageCache private var imageCache
     let cache = DataCache.instance
     /// We can create a custom cache like this (default values are as the same as below):
     /// `let cache = DataCache(name: "PlayCoverCache")`
     /// `cache.maxDiskCacheSize = 100*1024*1024`      // 100 MB
     /// `cache.maxCachePeriodInSecond = 7*86400`      // 1 week
     /// More details: https://github.com/huynguyencong/DataCache/blob/master/README.md
+
+    init() {
+        // Set image cache limit.
+        ImageCache().wrappedValue.setCacheLimit(
+            countLimit: 400,
+            totalCostLimit: 4*1024*1024
+        )
+    }
+
+    func removeImageCache() {
+        imageCache.removeCache()
+    }
 
     func resolveITunesData(_ link: String) async {
         if let refreshedITunesData = await getITunesData(link) {
@@ -28,15 +42,11 @@ class Cacher {
         var bestResImage: NSImage?
         let compareStr = app.info.bundleIdentifier + app.info.bundleVersion
 
-        do {
-            try app.url.enumerateContents { file, _ in
-                if file.lastPathComponent.contains(app.info.primaryIconName), let icon = NSImage(contentsOf: file),
-                    checkImageDimensions(icon, bestResImage) {
-                    bestResImage = icon
-                }
+        app.url.enumerateContents(blocking: false) { file, _ in
+            if file.lastPathComponent.contains(app.info.primaryIconName), let icon = NSImage(contentsOf: file),
+               self.checkImageDimensions(icon, bestResImage) {
+                bestResImage = icon
             }
-        } catch {
-            Log.shared.error(error)
         }
 
         if let assetsExtractor = try? AssetsExtractor(appUrl: app.url) {

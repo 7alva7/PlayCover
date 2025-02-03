@@ -10,169 +10,138 @@ struct PlayAppView: View {
     @Binding var selectedBackgroundColor: Color
     @Binding var selectedTextColor: Color
     @Binding var selected: PlayApp?
+    @Binding var isList: Bool
 
-    @State var app: PlayApp
-    @State var isList: Bool
-
-    @State private var showSettings = false
-    @State private var showClearCacheAlert = false
-    @State private var showClearCacheToast = false
-    @State private var showClearPreferencesAlert = false
-
-    @State var showImportSuccess = false
-    @State var showImportFail = false
-
-    @State private var showChangeGenshinAccount = false
-    @State private var showStoreGenshinAccount = false
-    @State private var showDeleteGenshinAccount = false
+    @StateObject var viewModel: PlayAppVM
 
     var body: some View {
         PlayAppConditionalView(selectedBackgroundColor: $selectedBackgroundColor,
                                selectedTextColor: $selectedTextColor,
                                selected: $selected,
-                               app: app,
+                               showStartingProgress: $viewModel.showStartingProgress,
+                               app: viewModel.app,
                                isList: isList)
             .gesture(TapGesture(count: 2).onEnded {
-                if app.info.bundleIdentifier == "com.miHoYo.GenshinImpact" {
-                    removeTwitterSessionCookie()
+                // Launch the app from a separate thread (allow us to Sayori it if needed)
+                Task(priority: .userInitiated) {
+                    if !viewModel.app.isStarting {
+                        viewModel.showStartingProgress = true
+                        await viewModel.app.launch()
+                        viewModel.showStartingProgress = false
+                    }
                 }
-                app.launch()
             })
             .simultaneousGesture(TapGesture().onEnded {
-                selected = app
+                selected = viewModel.app
             })
             .contextMenu {
                 Button(action: {
-                    showSettings.toggle()
+                    viewModel.showSettings.toggle()
                 }, label: {
                     Text("playapp.settings")
                 })
                 Button(action: {
-                    app.openAppCache()
+                    viewModel.app.openAppCache()
                 }, label: {
                     Text("playapp.openCache")
                 })
                 Button(action: {
-                    app.showInFinder()
+                    viewModel.app.showInFinder()
                 }, label: {
                     Text("playapp.showInFinder")
                 })
                 Divider()
                 Group {
                     Button(action: {
-                        app.keymapping.importKeymap { result in
+                        viewModel.app.keymapping.importKeymap { result in
                             if result {
-                                showImportSuccess.toggle()
+                                viewModel.showImportSuccess.toggle()
                             } else {
-                                showImportFail.toggle()
+                                viewModel.showImportFail.toggle()
                             }
                         }
                     }, label: {
                         Text("playapp.importKm")
                     })
                     Button(action: {
-                        app.keymapping.exportKeymap()
+                        viewModel.app.keymapping.exportKeymap()
                     }, label: {
                         Text("playapp.exportKm")
                     })
                 }
+                Divider()
                 Group {
-                    if app.info.bundleIdentifier.contains("GenshinImpact")
-                        || app.info.bundleIdentifier.contains("Yuanshen") {
-                        Divider()
-                        Button(action: {
-                            showStoreGenshinAccount.toggle()
-                        }, label: {
-                            Text("playapp.storeCurrentAccount")
-                        })
-                        Button(action: {
-                            showChangeGenshinAccount.toggle()
-                        }, label: {
-                            Text("playapp.activateAccount")
-                        })
-                        Button(action: {
-                            showDeleteGenshinAccount.toggle()
-                        }, label: {
-                            Text("playapp.deleteAccount")
-                        })
-                    }
+                    Button(action: {
+                        selected = nil
+                        Task { await Uninstaller.clearCachePopup(viewModel.app) }
+                    }, label: {
+                        Text("playapp.clearCache")
+                    })
+                    Button(action: {
+                        viewModel.showClearPreferencesAlert.toggle()
+                    }, label: {
+                        Text("playapp.clearPreferences")
+                    })
+                    Button(action: {
+                        viewModel.showClearPlayChainAlert.toggle()
+                    }, label: {
+                        Text("playapp.clearPlayChain")
+                    })
                 }
                 Divider()
                 Button(action: {
-                    showClearCacheAlert.toggle()
-                }, label: {
-                    Text("playapp.clearCache")
-                })
-                Button(action: {
-                    showClearPreferencesAlert.toggle()
-                }, label: {
-                    Text("playapp.clearPreferences")
-                })
-                Button(action: {
-                    Uninstaller.uninstallPopup(app)
+                    selected = nil
+                    Task { await Uninstaller.uninstallPopup(viewModel.app) }
                 }, label: {
                     Text("playapp.delete")
                 })
             }
-            .sheet(isPresented: $showChangeGenshinAccount) {
-                ChangeGenshinAccountView(app: app)
-            }
-            .sheet(isPresented: $showStoreGenshinAccount) {
-                StoreGenshinAccountView(app: app)
-            }
-            .sheet(isPresented: $showDeleteGenshinAccount) {
-                DeleteGenshinAccountView()
-            }
-            .alert("alert.app.delete", isPresented: $showClearCacheAlert) {
-                Button("button.Proceed", role: .cancel) {
-                    app.clearAllCache()
-                    showClearCacheToast.toggle()
+            .alert("alert.app.preferences", isPresented: $viewModel.showClearPreferencesAlert) {
+                Button("button.Proceed", role: .destructive) {
+                    deletePreferences(app: viewModel.app.info.bundleIdentifier)
+                    viewModel.showClearPreferencesAlert.toggle()
                 }
                 Button("button.Cancel", role: .cancel) { }
             }
-            .alert("alert.app.preferences", isPresented: $showClearPreferencesAlert) {
-                Button("button.Proceed", role: .cancel) {
-                    deletePreferences(app: app.info.bundleIdentifier)
-                    showClearPreferencesAlert.toggle()
+            .alert("alert.app.clearPlayChain", isPresented: $viewModel.showClearPlayChainAlert) {
+                Button("button.Proceed", role: .destructive) {
+                    viewModel.app.clearPlayChain()
+                    viewModel.showClearPlayChainAlert.toggle()
                 }
                 Button("button.Cancel", role: .cancel) { }
             }
-            .onChange(of: showClearCacheToast) { _ in
-                ToastVM.shared.showToast(
-                    toastType: .notice,
-                    toastDetails: NSLocalizedString("alert.appCacheCleared", comment: ""))
-            }
-            .onChange(of: showImportSuccess) { _ in
+            .onChange(of: viewModel.showImportSuccess) { _ in
                 ToastVM.shared.showToast(
                     toastType: .notice,
                     toastDetails: NSLocalizedString("alert.kmImported", comment: ""))
             }
-            .onChange(of: showImportFail) { _ in
+            .onChange(of: viewModel.showImportFail) { _ in
                 ToastVM.shared.showToast(
                     toastType: .error,
                     toastDetails: NSLocalizedString("alert.errorImportKm", comment: ""))
             }
-            .sheet(isPresented: $showSettings) {
-                AppSettingsView(viewModel: AppSettingsVM(app: app))
+            .sheet(isPresented: $viewModel.showSettings) {
+                AppSettingsView(viewModel: AppSettingsVM(app: viewModel.app))
             }
     }
 
-    func removeTwitterSessionCookie() {
+    func deletePreferences(app: String) {
+        let plistURL = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library")
+            .appendingPathComponent("Containers")
+            .appendingEscapedPathComponent(app)
+            .appendingPathComponent("Data")
+            .appendingPathComponent("Library")
+            .appendingPathComponent("Preferences")
+            .appendingEscapedPathComponent(app)
+            .appendingPathExtension("plist")
+
+        guard FileManager.default.fileExists(atPath: plistURL.path) else { return }
+
         do {
-            let cookieURL = FileManager.default.homeDirectoryForCurrentUser
-                .appendingPathComponent("Library")
-                .appendingPathComponent("Containers")
-                .appendingPathComponent("com.miHoYo.GenshinImpact")
-                .appendingPathComponent("Data")
-                .appendingPathComponent("Library")
-                .appendingPathComponent("Cookies")
-                .appendingPathComponent("Cookies")
-                .appendingPathExtension("binarycookies")
-            if FileManager.default.fileExists(atPath: cookieURL.path) {
-                try FileManager.default.removeItem(at: cookieURL)
-            }
+            try FileManager.default.removeItem(atPath: plistURL.path)
         } catch {
-            print("Error when attempting to remove Twitter session cookie: \(error)")
+            Log.shared.log("\(error)", isError: true)
         }
     }
 }
@@ -181,6 +150,7 @@ struct PlayAppConditionalView: View {
     @Binding var selectedBackgroundColor: Color
     @Binding var selectedTextColor: Color
     @Binding var selected: PlayApp?
+    @Binding var showStartingProgress: Bool
 
     @State var app: PlayApp
     @State var appIcon: NSImage?
@@ -199,9 +169,13 @@ struct PlayAppConditionalView: View {
                                 .resizable()
                                 .aspectRatio(contentMode: .fit)
                         } else {
-                            ProgressView()
-                                .progressViewStyle(.circular)
-                                .frame(width: 60, height: 60)
+                            Rectangle()
+                                 .fill(.regularMaterial)
+                                 .overlay {
+                                     ProgressView()
+                                         .progressViewStyle(.circular)
+                                         .controlSize(.small)
+                                 }
                         }
                     }
                     .frame(width: 30, height: 30)
@@ -218,6 +192,11 @@ struct PlayAppConditionalView: View {
                             .padding(.leading, 15)
                             .help("settings.noPlayTools")
                     }
+                    if showStartingProgress {
+                        ProgressView()
+                            .scaleEffect(0.5)
+                            .frame(width: 30, height: 30)
+                    }
                     Spacer()
                     Text(app.settings.info.bundleVersion)
                         .padding(.horizontal, 15)
@@ -231,15 +210,19 @@ struct PlayAppConditionalView: View {
                         .brightness(-0.2)
                     )
             } else {
-                VStack {
+                LazyVStack {
                     Group {
                         if let image = appIcon {
                             Image(nsImage: image)
                                 .resizable()
                                 .aspectRatio(contentMode: .fit)
                         } else {
-                            ProgressView()
-                                .progressViewStyle(.circular)
+                            Rectangle()
+                                 .fill(.regularMaterial)
+                                 .overlay {
+                                     ProgressView()
+                                         .progressViewStyle(.circular)
+                                 }
                         }
                     }
                     .cornerRadius(15)
@@ -249,22 +232,29 @@ struct PlayAppConditionalView: View {
                     let noPlayToolsWarning = Text(
                         (hasPlayTools ?? true) ? "" : "\(Image(systemName: "exclamationmark.triangle"))  "
                     )
-
-                    Text("\(noPlayToolsWarning)\(app.name)")
-                        .lineLimit(1)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 2)
-                        .foregroundColor(selected?.url == app.url ?
-                                         selectedTextColor : Color.primary)
-                        .background(
-                            RoundedRectangle(cornerRadius: 4)
-                                .fill(selected?.url == app.url ?
-                                      selectedBackgroundColor : Color.clear)
-                                .brightness(-0.2)
+                    HStack {
+                        Text("\(noPlayToolsWarning)\(app.name)")
+                            .lineLimit(1)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 2)
+                            .foregroundColor(selected?.url == app.url ?
+                                             selectedTextColor : Color.primary)
+                            .background(
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(selected?.url == app.url ?
+                                          selectedBackgroundColor : Color.clear)
+                                    .brightness(-0.2)
                             )
-                        .help(!(hasPlayTools ?? true) ? "settings.noPlayTools" : "")
-                        .frame(width: 130, height: 20)
+                            .help(!(hasPlayTools ?? true) ? "settings.noPlayTools" : "")
+                            .frame(height: 20)
+                        if showStartingProgress {
+                            ProgressView()
+                                .padding(.leading, 10)
+                                .scaleEffect(0.5)
+                                .frame(width: 20, height: 20)
+                        }
+                    }
                 }
                 .frame(width: 130, height: 130)
             }
@@ -275,11 +265,12 @@ struct PlayAppConditionalView: View {
                 && cache.readString(forKey: compareStr) != nil {
                 appIcon = cache.readImage(forKey: app.info.bundleIdentifier)
             } else {
-                appIcon = Cacher().resolveLocalIcon(app)
+                appIcon = Cacher.shared.resolveLocalIcon(app)
             }
         }
         .task(priority: .background) {
             hasPlayTools = app.hasPlayTools()
+            showStartingProgress = app.isStarting
         }
     }
 }
